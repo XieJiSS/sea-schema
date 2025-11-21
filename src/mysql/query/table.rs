@@ -91,10 +91,27 @@ impl From<&MySqlRow> for TableQueryResult {
     fn from(row: &MySqlRow) -> Self {
         use crate::mysql::discovery::GetMySqlValue;
         use crate::sqlx_types::Row;
+
+        let auto_increment = match row.try_get::<Option<u64>, usize>(2) {
+            Ok(v) => v,
+            Err(e) => {
+                if e.to_string()
+                    .contains("is not compatible with SQL type `BIGINT`")
+                {
+                    // tidb compat
+                    row.try_get::<Option<i64>, usize>(2)
+                        .unwrap()
+                        .map(|v| u64::try_from(v).unwrap())
+                } else {
+                    panic!("Error parsing auto_increment: {e:?}")
+                }
+            }
+        };
+
         Self {
             table_name: row.get_string(0),
             engine: row.get_string(1),
-            auto_increment: row.get(2),
+            auto_increment,
             table_collation: row.get_string(3),
             table_comment: row.get_string(4),
             create_options: row.get_string(5),

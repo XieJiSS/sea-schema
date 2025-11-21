@@ -78,8 +78,26 @@ impl From<&MySqlRow> for IndexQueryResult {
     fn from(row: &MySqlRow) -> Self {
         use crate::mysql::discovery::GetMySqlValue;
         use crate::sqlx_types::Row;
+
+        let non_unique = match row.try_get::<i32, usize>(0) {
+            Ok(v) => v,
+            Err(e) => {
+                if e.to_string()
+                    .contains("is not compatible with SQL type `VARCHAR`")
+                {
+                    // tidb compat
+                    row.try_get::<String, usize>(0)
+                        .unwrap()
+                        .parse::<i32>()
+                        .unwrap()
+                } else {
+                    panic!("Error parsing non_unique: {e:?}")
+                }
+            }
+        };
+
         Self {
-            non_unique: row.get(0),
+            non_unique,
             index_name: row.get_string(1),
             column_name: row.get_string_opt(2),
             collation: row.get_string_opt(3),
